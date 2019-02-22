@@ -1,0 +1,62 @@
+Pasos para instalar ADOP
+========================
+
+0. Requerimientos:
+
+    - Tener instalado ansible. Puede instalarse como contenedor en docker
+    - Ansible necesita boto3 y botocore.    
+
+1. Instalar Docker
+
+    1.1. Habilitar Repositorios para descargar docker
+
+        Repositorios:
+            Red Hat Enterprise Linux Server 7 Extra (RPMs) 
+            Red Hat Enterprise Linux Server 7 Optional (RPMs) 
+
+        Editar fichero del repositorio: 
+        $ sudo vi /etc/yum.repos.d/redhat-rhui.repo                                             
+
+        Buscar los repositorios anteriores y establecer enabled=1 
+        enabled=1 
+
+    1.2. Instalar el repositorio extra para instalar docker-compose: 
+
+        $ sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm 
+
+    1.3. Instalación de Docker y docker-compose: 
+
+        $ sudo yum -y install docker docker-compose 
+
+    1.4. Levantar el servicio de Docker. 
+
+        $ sudo systemctl enable docker 
+        $ sudo service docker start 
+        
+    1.5 Comprobar que docker está instalado correctamente
+        $ docker info
+ 
+2. Instalar git
+
+    $ yum update 
+    Esperar a descargar cosas
+    $ yum install git 
+    Comprobar si está instalado correctamente
+    $ git --version
+    
+3. Clonar Repositorio ADOP
+
+    $ git clone https://github.com/Accenture/adop-docker-compose.git    
+    
+    $ rm platform.secrets.sh
+    
+    $ chmod +x credentials.generate.sh
+    
+    $ ./credentials.generate.sh
+    Solicita un nombre de usuario administrador (no puede ser blank ni admin)
+    Genera un fichero platform.secrets.sh (el mismo que borramos) con unas contraseñas por defecto aleatorias. Podemos modificar o dejar. Pero no podmeos perderlas
+    
+    $ ./adop compose -i <IP pública de la máquina/dns de la máquina> init
+    
+    
+    

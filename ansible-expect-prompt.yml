@@ -1,0 +1,12 @@
+---
+  - name: Playbook Expect prompt
+    hosts: localhost
+    gather_facts: False
+    tasks:
+    - name: Execute script prompt.sh
+      expect:
+        #command: /bin/bash -c "/app/prompt.sh"
+        command: prompt.sh
+        responses:
+          (?i)Please enter a valid username: "adminhackansible"
+        echo: true

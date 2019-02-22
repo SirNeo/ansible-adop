@@ -1,0 +1,127 @@
+---
+  - name: Create EC2 instance for ADOP/C
+    hosts: localhost
+    gather_facts: False
+
+    vars:
+        region: eu-west-1 # Ireland
+        instance_type: m5.2xlarge 
+        image: ami-0e12cbde3e77cbb98  # RHL7
+        keypair: {{ keypair }}
+        aws_secret_key: {{ aws_secret_key }}
+        aws_access_key: {{ aws_access_key }}
+        vpc: {{ vpc_id }}
+        vpcSubnetId: {{ subnet_id }}
+        tag_name: ADOP_HACKATHON
+        tag_environment: HACKATHON_2019
+        adop_admin: {{ adop_admin }}
+        adop_admin_pass: {{ adop_admin_pass }}
+
+    tasks:
+    - name: Create Security Group
+      ec2_group:
+        name: "SG_{{ tag_name }}"
+        description: Security Group for Hackathon2019
+        vpc_id: "{{ vpc }}"
+        region: "{{ region }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        aws_access_key: "{{ aws_access_key }}"
+        rules:
+         - proto: tcp
+           from_port: 80
+           to_port: 80
+           cidr_ip: 0.0.0.0/0
+         - proto: tcp
+           from_port: 22
+           to_port: 22
+           cidr_ip: 0.0.0.0/0
+         - proto: tcp
+           from_port: 443
+           to_port: 443
+           cidr_ip: 0.0.0.0/0
+        tags:
+          Name: "SG_{{ tag_name }}"
+          Environment: "{{ tag_environment }}"
+    - name: Create EC2 Instance
+      ec2_instance:
+        vpc_subnet_id: "{{ vpcSubnetId }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        aws_access_key: "{{ aws_access_key }}"
+        name: "APP_{{ tag_name }}"
+        security_group: "SG_{{ tag_name }}"
+        state: running
+        image_id: "{{ image }}"
+        instance_type: "{{ instance_type }}"
+        region: "{{ region }}"
+        key_name: "{{ keypair }}"
+        wait: yes
+        network:
+          assign_public_ip: false
+        tags:
+          Environment: "{{ tag_environment }}"
+      register: ec2
+      notify: instance_created
+    handlers:
+     - name: Add host to hosts file
+       add_host:
+        name: "{{ item.private_ip_address }}"
+        groups: webserver
+       with_items: "{{ ec2.instances }}"
+       listen: instance_created
+     - name: Refresh inventory
+       meta: refresh_inventory
+       listen: instance_created
+  - name: Aprovisionate EC2 instance
+    hosts: webserver
+    remote_user: ec2-user
+    become: yes
+    tasks:
+      - name: Enable RHEL extras repository
+        shell: yum-config-manager --enable rhel-7-server-extras-rpms
+      - name: Enable RHEL extras repository
+        shell: yum-config-manager --enable rhui-REGION-rhel-server-extras
+      - name: Install Docker
+        yum:
+            name: docker  
+            state: present
+            update_cache: yes
+      - name: Download docker-compose
+        get_url:
+            url: "https://github.com/docker/compose/releases/download/1.22.0/docker-compose-Linux-x86_64"
+            dest: "/usr/local/bin/docker-compose"
+            force: True
+            mode: "0755"
+      - name: Create Symbolic Link to docker-compose
+        file:
+          src: /usr/local/bin/docker-compose
+          dest: /usr/bin/docker-compose
+          state: link
+      - name: Run docker service
+        service:
+            name: docker
+            state: started  
+      - name: Install git
+        yum: 
+          name: git
+          state: present
+          update_cache: yes
+      - name: Clone ADOP/C repository
+        git:
+          repo: https://github.com/Accenture/adop-docker-compose.git
+          dest: /home/ec2-user/adop-docker-compose
+      - name: Generate credentials for ADOP/C
+        become: yes
+        shell: |
+          cd /home/ec2-user/adop-docker-compose
+          export VERSION_ID=$(git log -1 --format="%H" HEAD platform.secrets.sh.example)
+          export INITIAL_ADMIN_USER="{{ adop_admin }}"
+          export INITIAL_ADMIN_PASSWORD_PLAIN="{{ adop_admin_pass }}"
+          export PASSWORD_JENKINS="{{ adop_admin_pass }}"
+          export PASSWORD_GERRIT="{{ adop_admin_pass }}"
+          export PASSWORD_SQL="{{ adop_admin_pass }}"
+          export LDAP_PWD="{{ adop_admin_pass }}"
+          export INITIAL_ADMIN_PASSWORD=$(echo -n {{ adop_admin_pass }} | base64)
+          export JENKINS_PWD=$(echo -n {{ adop_admin_pass }} | base64)
+          export GERRIT_PWD=$(echo -n {{ adop_admin_pass }} | base64)
+          cd /home/ec2-user/adop-docker-compose && /home/ec2-user/adop-docker-compose/adop compose -i {{ inventory_hostname }} init
+        
